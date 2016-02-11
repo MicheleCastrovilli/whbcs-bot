@@ -101,6 +101,11 @@ xGetLine h = xGet h ""
 
 eval :: Response -> Net ()
 eval (Reply n "!test") = write $ "Hello " ++ n
+eval (Reply n "!ping") = write $ "Pong!"
+eval (Reply n s) = do
+                   nick <- gets currentNick
+                   when (s == "!help @" ++ nick)
+                     (write "Hi, I am a bot prototype made by @viviff.")
 eval _ = return ()
 
 write :: String -> Net ()
