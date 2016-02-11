@@ -61,7 +61,6 @@ executable whbcs-bot
   build-depends:       base >=4.8 && <4.9
                      , network >= 2.6 && <2.7
                      , mtl >= 2.2 && <2.3
-                     , ansi-terminal >= 0.6 && <0.7
   
   -- Directories containing source files.
   hs-source-dirs:      src

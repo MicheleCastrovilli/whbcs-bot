@@ -4,7 +4,6 @@ import Network
 
 import System.IO
 import System.Timeout
-import System.Console.ANSI
 
 import Text.Printf
 
@@ -77,7 +76,7 @@ connect d p = notify $ do
 
 start :: NickName -> IO ()
 start n = withConnectionTo "leet.nu" 4321 $ do
-            setTerminal Ansi
+            setTerminal Dumb
             setName n
             enterRoom
             (lift $ asks socket ) >>= listen
@@ -85,11 +84,20 @@ start n = withConnectionTo "leet.nu" 4321 $ do
 
 listen :: Handle -> Net ()
 listen h = forever $ do
-    s <- liftIO $ timeout (100000000) (hGetLine h)
+    s <- liftIO $ timeout (10000000) (xGetLine h)
     case s of
         Nothing -> write ""
-        Just str -> maybe (return ()) eval $ maybeRead str
-    liftIO $ putStrLn $ show s
+        Just "" -> return ()
+        Just str -> do maybe (return ()) eval $ maybeRead $ filter (/='\NUL') str
+                       liftIO $ putStrLn $ show s
+
+xGetLine :: Handle -> IO String
+xGetLine h = xGet h ""
+    where xGet h s = do c <- hGetChar h
+                        case c of
+                            '\NUL' -> return s
+                            '\n' -> return s
+                            _ -> xGet h (s++[c])
 
 eval :: Response -> Net ()
 eval (Reply n "!test") = write $ "Hello " ++ n
@@ -114,8 +122,7 @@ enterRoom = do
             state <- get
             h <- lift $ asks socket
             when (not $ inRoom $ state)
-                (write "/join" >>
-                 write (setCursorPositionCode 80 1))
+                (write "/join")
             put (state {inRoom = True})
 
 leaveRoom :: Net ()
