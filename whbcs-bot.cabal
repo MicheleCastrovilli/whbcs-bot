@@ -58,9 +58,11 @@ executable whbcs-bot
   -- other-extensions:    
   
   -- Other library packages from which modules are imported.
-  build-depends:       base >=4.8 && <4.9
-                     , network >= 2.6 && <2.7
-                     , mtl >= 2.2 && <2.3
+  build-depends:       base >=4.8 
+                     , network >= 2.6 
+                     , mtl >= 2.2 
+                     , mueval -any
+                     , hint -any
   
   -- Directories containing source files.
   hs-source-dirs:      src

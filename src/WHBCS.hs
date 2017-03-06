@@ -15,6 +15,28 @@ import Control.Monad.Reader
 import Data.Char
 import Data.Maybe
 
+import Mueval.Interpreter
+import Mueval.ArgsParse
+import Mueval.Context
+import Language.Haskell.Interpreter (runInterpreter)
+
+defaultOptions' s = Options {
+    printType = False
+  , modules = Just defaultModules
+  , timeLimit = 5
+  , user = ""
+  , loadFile = ""
+  , typeOnly = False
+  , extensions = False
+  , namedExtensions = []
+  , noImports = False
+  , rLimits = False
+  , packageTrust = False
+  , trustedPackages = defaultPackages
+  , help = False
+  , expression = s
+  }
+
 type Conn = ReaderT BotConnection IO
 type Net = StateT BotState Conn
 
@@ -69,48 +91,67 @@ connect d p = notify $ do
              hSetNewlineMode h (NewlineMode LF CRLF)
              hSetBuffering stdout NoBuffering
              return $ BotConnection h
-    where notify a = bracket_
+    where notify = bracket_
                 (printf "Connection to %s:%d... " d p >> hFlush stdout)
                 (putStrLn "Done.")
-                a
 
 start :: NickName -> IO ()
 start n = withConnectionTo "leet.nu" 4321 $ do
             setTerminal Dumb
             setName n
             enterRoom
-            (lift $ asks socket ) >>= listen
+            lift (asks socket) >>= listen
             quit
 
 listen :: Handle -> Net ()
 listen h = forever $ do
-    s <- liftIO $ timeout (10000000) (xGetLine h)
+    s <- liftIO $ timeout 1000000 $ xGetLine h
     case s of
-        Nothing -> write ""
-        Just "" -> return ()
-        Just str -> do maybe (return ()) eval $ maybeRead $ filter (/='\NUL') str
-                       liftIO $ putStrLn $ show s
+        Nothing -> return () 
+        Just "" -> return () 
+        Just str -> maybe (return ()) eval $ maybeRead $ filter (/='\NUL') str
 
 xGetLine :: Handle -> IO String
-xGetLine h = xGet h ""
+xGetLine h = hPrintf h "\n" >> xGet h ""
     where xGet h s = do c <- hGetChar h
+                        putChar c
                         case c of
                             '\NUL' -> return s
                             '\n' -> return s
                             _ -> xGet h (s++[c])
 
+-- I know, i know, that !eval looks stupid, and i should use ViewPatterns.
 eval :: Response -> Net ()
+eval (Reply n ('!':'e':'v':'a':'l':' ': xs)) = do
+  val <- liftIO $ myInterpreter (defaultOptions' xs)
+  write val
 eval (Reply n "!test") = write $ "Hello " ++ n
-eval (Reply n "!ping") = write $ "Pong!"
+eval (Reply n "!ping") = write "Pong!"
+eval (Reply n ('!':'p':'i':'n':'g':' ':'@':xs)) = 
+  do nick <- gets currentNick
+     liftIO $ putStrLn xs
+     when (xs == nick) (write "Pong! :D")
 eval (Reply n s) = do
                    nick <- gets currentNick
                    when (s == "!help @" ++ nick)
-                     (write "Hi, I am a bot prototype made by @viviff.")
+                     (write "Hi, I am a bot prototype made by @viviff." >>
+                      write "Commands are: !test, !ping, !eval <expr>")
 eval _ = return ()
+
+myInterpreter :: Options -> IO String
+myInterpreter opts = 
+  do r <- runInterpreter (interpreter opts)
+     case r of
+       Left err -> return $ "ERR: " ++ show err
+       Right (e,et,val) -> do (val',_) <- render 1024 val
+                              (typ,_) <- render 1024 $ unwords $ words et
+                              return (typ++"\n"++val')
 
 write :: String -> Net ()
 write s = do h <- lift $ asks socket
+             liftIO $ hPrintf h "\n"
              liftIO $ hPrintf h "%s\n" s
+             liftIO $ hPrintf h "\n"
              liftIO $ printf "%s\n" s
 
 setTerminal :: TerminalType -> Net ()
@@ -126,14 +167,14 @@ enterRoom :: Net ()
 enterRoom = do
             state <- get
             h <- lift $ asks socket
-            when (not $ inRoom $ state)
+            unless (inRoom state)
                 (write "/join")
             put (state {inRoom = True})
 
 leaveRoom :: Net ()
 leaveRoom = do
             state <- get
-            when (inRoom $ state)
+            when (inRoom state)
                 (write "/leave")
             put (state {inRoom = False})
 
